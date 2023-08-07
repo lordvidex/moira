@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/antonmedv/expr"
-	"github.com/antonmedv/expr/ast"
 	"github.com/antonmedv/expr/vm"
 	"github.com/patrickmn/go-cache"
 
@@ -14,6 +13,14 @@ import (
 	"github.com/moira-alert/moira"
 )
 
+var (
+	warnErrorRising  = "t1 >= ERROR_VALUE ? ERROR : (t1 >= WARN_VALUE ? WARN : OK)"
+	warnErrorFalling = "t1 <= ERROR_VALUE ? ERROR : (t1 <= WARN_VALUE ? WARN : OK)"
+	warnRising       = "t1 >= WARN_VALUE ? WARN : OK"
+	errRising        = "t1 >= ERROR_VALUE ? ERROR : OK"
+	warnFalling      = "t1 <= WARN_VALUE ? WARN : OK"
+	errFalling       = "t1 <= ERROR_VALUE ? ERROR : OK"
+)
 var exprWarnErrorRising, _ = govaluate.NewEvaluableExpression("t1 >= ERROR_VALUE ? ERROR : (t1 >= WARN_VALUE ? WARN : OK)")
 var exprWarnErrorFalling, _ = govaluate.NewEvaluableExpression("t1 <= ERROR_VALUE ? ERROR : (t1 <= WARN_VALUE ? WARN : OK)")
 var exprWarnRising, _ = govaluate.NewEvaluableExpression("t1 >= WARN_VALUE ? WARN : OK")
@@ -84,16 +91,6 @@ func (triggerExpression TriggerExpression) Get(name string) (interface{}, error)
 // Visit implements expr.Visitor interface.
 //
 // It replaces all identifiers (t1, t2, ..tN) with Get("t1"), Get("t2"), ..Get("tN")
-func (triggerExpression TriggerExpression) Visit(node *ast.Node) {
-	if n, ok := (*node).(*ast.IdentifierNode); ok {
-		ast.Patch(node, &ast.CallNode{
-			Arguments: []ast.Node{
-				&ast.StringNode{Value: n.Value},
-			},
-			Callee: &ast.IdentifierNode{Value: "Get"},
-		})
-	}
-}
 
 // Evaluate gets trigger expression and evaluates it for given parameters using govaluate
 func (triggerExpression *TriggerExpression) Evaluate() (moira.State, error) {
@@ -130,7 +127,7 @@ func (triggerExpression *TriggerExpression) Validate() error {
 	if !found {
 		program, err = expr.Compile(
 			expression.String(),
-			expr.Patch(triggerExpression), // patch identifiers with call to Get
+			expr.Patch(exprEngine{}), // patch identifiers with call to Get
 			expr.Optimize(true),
 		)
 		if err != nil {
